@@ -4,9 +4,9 @@ set -e
 
 echo "🔄 Обновляем пакеты и устанавливаем зависимости..."
 sudo apt update
-sudo apt purge pulseaudio pulseaudio-utils pulseaudio-module*
+sudo apt purge -y pulseaudio pulseaudio-utils pulseaudio-module* 
 sudo rm -rf ~/.config/pulse /etc/pulse /var/lib/pulse
-sudo apt install -y git wireguard firefox pulseaudio python3 python3-pip
+sudo apt install -y git wireguard firefox pulseaudio python3 python3-pip 
 systemctl --user mask pulseaudio.socket
 systemctl --user mask pulseaudio.service
 echo "autospawn = no" > ~/.config/pulse/client.conf

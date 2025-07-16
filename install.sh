@@ -6,22 +6,22 @@ echo "🔄 Обновляем пакеты и устанавливаем зав�
 sudo apt update
 sudo apt purge -y pulseaudio pulseaudio-utils pulseaudio-module* 
 sudo rm -rf ~/.config/pulse /etc/pulse /var/lib/pulse
-sudo apt install -y git wireguard firefox pulseaudio python3 python3-pip 
+sudo apt install -y git wireguard firefox pulseaudio python3 python3-pip
 systemctl --user mask pulseaudio.socket
 systemctl --user mask pulseaudio.service
-echo "autospawn = no" > ~/.config/pulse/client.conf
+#echo "autospawn = no" > ~/.config/pulse/client.conf
 pulseaudio --kill
 rm -rf ~/.config/pulse ~/.pulse /run/user/1000/pulse
 pulseaudio --start --log-level=info
 
+echo "📥 Клонируем репозиторий и переносим файлы..."
+git clone https://github.com/kirillsilent/orange.git
 cd /home/orangepi/orange/linphone_web_interface
 pip3 install -r requirements.txt
 echo "🧩 Создаём профиль Firefox..."
 DISPLAY=:0 firefox --no-remote --CreateProfile orangepi
-
-echo "📥 Клонируем репозиторий и переносим файлы..."
-git clone https://github.com/kirillsilent/orange.git
-cd orange
+firefox --no-remote -P orangepi --kiosk https://172.16.102.2:7443 --noerrdialogs --autoplay-policy=no-user-gesture-required &
+cd /home/orangepi/orange/
 sudo mv linphone_web_interface /home/orangepi/
 sudo mv gpio.sh run.sh config.json /home/orangepi/
 sudo mv start.service web.service /etc/systemd/system/

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки сети</title>
+</head>
+<body>
+    <h1>Настройки сети</h1>
+
+    {% if message %}
+        <p style="color: green;">{{ message }}</p>
+    {% elif error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+<p>IP-адрес: {{ ip_settings.ip_address }}</p>
+<p>Маска подсети: {{ ip_settings.subnet_mask }}</p>
+<p>Шлюз: {{ ip_settings.gateway }}</p>
+    <h2>Доступные сети</h2>
+    <form method="POST">
+        <label for="ssid">Выберите сеть:</label>
+        <select name="ssid" id="ssid" required>
+            {% for network in networks %}
+                <option value="{{ network.ssid }}">{{ network.ssid }} ({{ network.signal }}%)</option>
+            {% endfor %}
+        </select>
+        <br><br>
+        <label for="password">Пароль:</label>
+        <input type="password" name="password" id="password" required>
+        <br><br>
+        <button type="submit">Подключиться</button>
+    </form>
+
+    <br>
+    <a href="/settings"><button>← Назад к настройкам</button></a>
+<script>
+    // Автоматическое включение/выключение полей для статического IP
+    document.getElementById('dhcpToggle').addEventListener('change', function() {
+        const staticFields = document.getElementById('staticIpFields');
+        staticFields.style.display = this.checked ? 'none' : 'block';
+    });
+
+    // Скрываем поля статического IP, если выбран DHCP
+    document.addEventListener('DOMContentLoaded', function() {
+        const dhcpChecked = document.getElementById('dhcpToggle').checked;
+        document.getElementById('staticIpFields').style.display = dhcpChecked ? 'none' : 'block';
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SIP.js Телефон (FreeSWITCH)</title>
+</head>
+<body>
+  <h2>SIP.js Телефон (FreeSWITCH)</h2>
+
+  <!-- Регистрация SIP -->
+  <div id="login-block">
+    <input type="text" id="sip-username" placeholder="SIP Username">
+    <input type="password" id="sip-password" placeholder="SIP Password">
+    <input type="text" id="sip-domain" placeholder="SIP Domain (e.g., freeswitch.local)">
+    <button onclick="registerSIP(); saveConfig();">Войти</button>
+  </div>
+
+  <!-- Звонки -->
+  <div id="call-block" style="display: none;">
+    <input type="text" id="targetNumber" placeholder="Куда звонить">
+    <button onclick="makeCall()">Позвонить</button>
+    <button onclick="hangupCall()">Сбросить</button>
+    <p><b>Статус:</b> <span id="status">Не подключен</span></p>
+
+    <div>
+      <h3>Локальное видео</h3>
+      <video id="localVideo" autoplay muted playsinline style="width: 240px;"></video>
+      <h3>Удалённое видео</h3>
+      <video id="remoteVideo" autoplay playsinline style="width: 240px;"></video>
+    </div>
+  </div>
+
+  <!-- Входящий -->
+  <div id="incoming-call" style="display:none;">
+    <p>Входящий звонок</p>
+    <button id="acceptBtn">Принять</button>
+    <button id="rejectBtn">Отклонить</button>
+  </div>
+  <audio id="remoteAudio" autoplay></audio>
+<script type="module">
+import {
+  UserAgent,
+  Registerer,
+  Inviter,
+  SessionState
+} from "{{ url_for('static', filename='lib/index.js') }}";
+
+let userAgent;
+let registerer;
+let session;
+
+fetch('/get_config')
+  .then(res => res.json())
+  .then(config => {
+    document.getElementById('sip-username').value = config.username || '';
+    document.getElementById('sip-password').value = config.password || '';
+    document.getElementById('sip-domain').value = config.server || '';
+    document.getElementById('targetNumber').value = config.operator || '';
+    registerSIP();
+  });
+
+function registerSIP() {
+  const username = document.getElementById('sip-username').value;
+  const password = document.getElementById('sip-password').value;
+  const domain = document.getElementById('sip-domain').value;
+  const uri = `sip:${username}@${domain}`;
+  const wsServer = `wss://${domain}:7443`;
+
+  if (userAgent) userAgent.stop();
+
+  userAgent = new UserAgent({
+    uri: UserAgent.makeURI(uri),
+    transportOptions: { server: wsServer },
+    authorizationUsername: username,
+    authorizationPassword: password,
+delegate: {
+  onInvite: async (invitation) => {
+    console.log("📞 Входящий вызов (автоответ)");
+
+    session = invitation;
+
+    // После ответа отслеживаем состояние
+    invitation.stateChange.addListener(async (state) => {
+      if (state === SessionState.Established) {
+        console.log("✅ Вызов установлен, настраиваем медиапотоки...");
+
+        const pc = invitation.sessionDescriptionHandler.peerConnection;
+        const remoteStream = new MediaStream();
+
+        pc.getReceivers().forEach((receiver) => {
+          if (receiver.track) {
+            remoteStream.addTrack(receiver.track);
+          }
+        });
+
+        const remoteAudio = document.getElementById('remoteAudio');
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        remoteAudio.srcObject = remoteStream;
+        remoteVideo.srcObject = remoteStream;
+        remoteAudio.muted = false;
+
+
+          try {
+            const audioContext = new AudioContext();
+            const source = audioContext.createMediaStreamSource(remoteStream);
+            source.connect(audioContext.destination);
+            console.log("🔊 Воспроизведение через Web Audio API");
+          } catch (e) {
+            console.error("❌ Ошибка Web Audio API:", e);
+          }
+      }
+    });
+
+    try {
+      await invitation.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: { audio: true, video: true }
+        }
+      });
+    } catch (err) {
+      console.error("❌ Ошибка при автоответе:", err);
+    }
+  }
+}
+
+  });
+  userAgent.start().then(() => {
+    registerer = new Registerer(userAgent);
+    return registerer.register();
+  }).then(() => {
+    console.log("✅ Зарегистрирован как", uri);
+    document.getElementById('status').innerText = `Подключен как ${uri}`;
+    document.getElementById('login-block').style.display = 'none';
+    document.getElementById('call-block').style.display = 'block';
+  }).catch(err => {
+    console.error("❌ Ошибка регистрации:", err);
+    alert("Ошибка регистрации: " + (err.message || err));
+  });
+}
+
+function makeCall() {
+  const target = document.getElementById('targetNumber').value;
+  const domain = document.getElementById('sip-domain').value;
+  const targetURI = UserAgent.makeURI(`sip:${target}@${domain}`);
+
+  navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then((stream) => {
+    document.getElementById('localVideo').srcObject = stream;
+
+    const inviter = new Inviter(userAgent, targetURI, {
+      sessionDescriptionHandlerOptions: {
+        constraints: { audio: true, video: true },
+        stream: stream
+      }
+    });
+
+    session = inviter;
+
+    inviter.stateChange.addListener((state) => {
+      if (state === SessionState.Established) {
+        const pc = inviter.sessionDescriptionHandler.peerConnection;
+        const remoteStream = new MediaStream();
+        pc.getReceivers().forEach(receiver => {
+          if (receiver.track) remoteStream.addTrack(receiver.track);
+        });
+
+        const remoteAudio = document.getElementById('remoteAudio');
+        remoteAudio.srcObject = remoteStream;
+        remoteAudio.play().catch(err => {
+          console.error("Ошибка воспроизведения аудио:", err);
+        });
+
+        const remoteVideo = document.getElementById('remoteVideo');
+        remoteVideo.srcObject = remoteStream;
+      }
+    });
+
+    inviter.invite().catch(err => {
+      console.error("Ошибка при звонке:", err);
+      alert("Ошибка при звонке: " + err.message || err);
+    });
+  }).catch(err => {
+    console.error("getUserMedia error:", err);
+    alert("Ошибка доступа к камере/микрофону: " + err.message);
+  });
+}
+
+function hangupCall() {
+  if (session) {
+    session.bye();
+    session = null;
+  }
+}
+
+function saveConfig() {
+  const config = {
+    username: document.getElementById('sip-username').value,
+    password: document.getElementById('sip-password').value,
+    server: document.getElementById('sip-domain').value,
+    operator: document.getElementById('targetNumber').value
+  };
+
+  fetch('/save_sip_config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  }).then(res => {
+    if (!res.ok) alert("Ошибка при сохранении настроек");
+  });
+}
+
+window.addEventListener('storage', (event) => {
+  if (event.key === 'trigger-register') {
+    console.log("🔁 Получен сигнал на регистрацию");
+    registerSIP();
+  }
+});
+
+window.makeCall = makeCall;
+window.hangupCall = hangupCall;
+window.registerSIP = registerSIP;
+window.saveConfig = saveConfig;
+setInterval(() => {
+  fetch('/api/check_trigger').then(res => {
+    if (res.status === 200) {
+      makeCall(); // Только если флаг найден
+    }
+  });
+}, 1000);
+
+</script>
+
+</body>
+</html>

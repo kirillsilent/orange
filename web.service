@@ -1,0 +1,15 @@
+[Unit]
+Description=Flask Web Interface for Linphone
+After=network.target
+
+[Service]
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/linphone_web_interface
+ExecStart=/usr/bin/python3 /home/orangepi/linphone_web_interface/app.py
+Restart=always
+Environment=FLASK_ENV=production
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

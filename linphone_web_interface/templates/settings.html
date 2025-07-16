@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+<div class="main">
+    <h1>Настройки</h1>
+
+    <form method="POST" action="/settings" id="sip-settings-form">
+        <h2>SIP настройки</h2>
+        <label for="server">Сервер:</label>
+        <input type="text" id="server" name="server" value="{{ config.server }}" required>
+
+        <label for="username">Логин:</label>
+        <input type="text" id="username" name="username" value="{{ config.username }}" required>
+
+        <label for="password">Пароль:</label>
+        <input type="password" id="password" name="password" value="{{ config.password }}" required>
+
+        <label for="operator">Номер оператора:</label>
+        <input type="text" id="operator" name="operator" value="{{ config.operator }}" required>
+    </form>
+<button type="button" onclick="getSIP()">Получить SIP</button>
+
+    <hr>
+    <div class="volume">
+        <h2>Громкость аудиоустройств</h2>
+        
+        <div>
+            <label for="speaker-volume">Динамики (numid=6):</label>
+            <input type="range" id="speaker-volume" min="0" max="100" step="1">
+            <span id="speaker-volume-value">30</span>%
+        </div>
+        
+        <div>
+            <label for="mic-volume">Микрофон (numid=4):</label>
+            <input type="range" id="mic-volume" min="0" max="100" step="1">
+            <span id="mic-volume-value">14</span>%
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="audio">
+        <h2>Выбор аудиоустройств</h2>
+        <div>
+            <label for="output-device">Устройство вывода:</label>
+            <select id="output-device"></select>
+        </div>
+        <div>
+            <label for="input-device">Устройство ввода:</label>
+            <select id="input-device"></select>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="camera">
+        <h2>Выбор устройства камеры</h2>
+        <div>
+            <label for="video-device">Устройство камеры:</label>
+            <select id="video-device"></select>
+        </div>
+    </div>
+
+    <div class="btns">
+        <button id="save-settings" type="submit">Сохранить настройки</button>
+        <a href="/network_settings"><button type="button">Настройки сети</button></a>
+        <a href="/">
+            <button type="button">Назад</button>
+        </a>
+    </div>
+</div>
+
+<script>
+    // Функция загрузки настроек
+    async function loadSettings() {
+        try {
+            const audioResponse = await fetch('/get_audio_settings');
+            const audioData = await audioResponse.json();
+
+// Обработчик для изменения громкости динамиков
+document.getElementById('speaker-volume').addEventListener('input', function(event) {
+    let volume = event.target.value;
+    document.getElementById('speaker-volume-value').textContent = volume;
+
+    fetch('/set_volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ control: 'Speaker', volume: volume }) // numid=6 теперь control=6
+    }).catch(error => console.error('Ошибка установки громкости:', error));
+});
+
+document.getElementById('mic-volume').addEventListener('input', function(event) {
+    let volume = event.target.value;
+    document.getElementById('mic-volume-value').textContent = volume;
+
+    fetch('/set_volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ control: 'Mic', volume: volume }) // numid=4 теперь control=4
+    });
+});
+
+
+
+            // Устройства вывода
+            const outputSelect = document.getElementById('output-device');
+            outputSelect.innerHTML = '';
+            audioData.available_devices.output.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.name;
+                option.textContent = device.name;
+                if (device.name === audioData.output_device) option.selected = true;
+                outputSelect.appendChild(option);
+            });
+
+            // Устройства ввода
+            const inputSelect = document.getElementById('input-device');
+            inputSelect.innerHTML = '';
+            audioData.available_devices.input.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.name;
+                option.textContent = device.name;
+                if (device.name === audioData.input_device) option.selected = true;
+                inputSelect.appendChild(option);
+            });
+
+            // Устройства камеры
+            const videoResponse = await fetch('/get_video_devices');
+            const videoDevices = await videoResponse.json();
+            const videoSelect = document.getElementById('video-device');
+            videoSelect.innerHTML = '';
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.name;
+                option.textContent = device.name;
+                videoSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Ошибка загрузки настроек:', error);
+        }
+    }
+
+    // Сохранение настроек
+    async function saveSettings(event) {
+        event.preventDefault();
+        try {
+            document.querySelector("#sip-settings-form").submit();
+            const masterVolume = document.getElementById('speaker-volume').value;
+            const pcmVolume = document.getElementById('mic-volume').value;
+            const outputDevice = document.getElementById('output-device').value;
+            const inputDevice = document.getElementById('input-device').value;
+            const videoDevice = document.getElementById('video-device').value;
+            const form = document.getElementById('sip-settings-form');
+
+            // Сохранение аудио
+            await fetch('/set_audio_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    speaker_volume: masterVolume,
+                    mic_volume: pcmVolume,
+                    output_device: outputDevice,
+                    input_device: inputDevice
+                })
+            });
+
+            // Сохранение камеры
+            await fetch(`/set_audio_device`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_type: 'output',
+                    device_name: 'sysdefault'
+                 })
+             });
+             await fetch(`/set_audio_device`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_type: 'input',
+                    device_name: 'sysdefault'
+                 })
+             });
+            await fetch(`/set_video_device/${videoDevice}`, { method: 'POST' });
+            localStorage.setItem('trigger-register', Date.now()); 
+            alert('Настройки успешно сохранены!');
+        } catch (error) {
+            console.error('Ошибка сохранения настроек:', error);
+            alert('Настройки успешно сохранены!');
+        }
+    }
+
+    // Инициализация
+    window.onload = function() {
+        loadSettings();
+        fetch('/get_volume')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('speaker-volume').value = data.master;
+                document.getElementById('speaker-volume-value').textContent = data.master;
+                document.getElementById('mic-volume').value = data.pcm;
+                document.getElementById('mic-volume-value').textContent = data.pcm;
+            });
+        document.getElementById('save-settings').addEventListener('click', saveSettings);
+    };
+  function getSIP() {
+    const server = document.getElementById('server').value;
+    if (!server) {
+      alert("Сначала укажите адрес сервера.");
+      return;
+    }
+
+    const url = `/proxy/sip`;
+
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error(`Ошибка запроса: ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        if (!data.account || !data.password) {
+          throw new Error("Некорректный ответ от сервера");
+        }
+
+        // Заполняем поля формы
+        document.getElementById('username').value = data.account;
+        document.getElementById('password').value = data.password;
+
+
+        // Автоматическая отправка формы, если нужно:
+        // document.getElementById('sip-settings-form').submit();
+
+        console.log("✅ Получен SIP:", data.account);
+      })
+      .catch(err => {
+        console.error("❌ Ошибка получения SIP:", err);
+        alert("Ошибка получения SIP: " + err.message);
+      });
+  }
+</script>
+</body>
+</html>

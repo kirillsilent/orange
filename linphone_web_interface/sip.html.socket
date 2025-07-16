@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SIP.js Телефон (FreeSWITCH)</title>
+</head>
+<body>
+  <h2>SIP.js Телефон (FreeSWITCH)</h2>
+
+  <div id="login-block">
+    <input type="text" id="sip-username" placeholder="SIP Username">
+    <input type="password" id="sip-password" placeholder="SIP Password">
+    <input type="text" id="sip-domain" placeholder="SIP Domain (e.g., freeswitch.local)">
+    <button id="loginBtn">Войти</button>
+  </div>
+
+  <div id="call-block" style="display: none;">
+    <input type="text" id="targetNumber" placeholder="Куда звонить">
+    <button onclick="makeCall()">Позвонить</button>
+    <button onclick="hangupCall()">Сбросить</button>
+    <p><b>Статус:</b> <span id="status">Не подключен</span></p>
+
+    <div>
+      <h3>Локальное видео</h3>
+      <video id="localVideo" autoplay muted playsinline style="width: 240px;"></video>
+      <h3>Удалённое видео</h3>
+      <video id="remoteVideo" autoplay playsinline style="width: 240px;"></video>
+    </div>
+  </div>
+
+  <div id="incoming-call" style="display:none;">
+    <p>Входящий звонок</p>
+    <button id="acceptBtn">Принять</button>
+    <button id="rejectBtn">Отклонить</button>
+  </div>
+
+  <audio id="remoteAudio" autoplay></audio>
+
+  <script src="{{ url_for('static', filename='js/sip-0.16.0.min.js') }}"></script>
+  <script>
+    let userAgent = null;
+    let session = null;
+    let localStream = null;
+
+    // Логика авто-заполнения
+    fetch('/get_config')
+      .then(res => res.json())
+      .then(config => {
+        document.getElementById('sip-username').value = config.username || '';
+        document.getElementById('sip-password').value = config.password || '';
+        document.getElementById('sip-domain').value = config.server || '';
+        document.getElementById('targetNumber').value = config.operator || '';
+      });
+
+    document.getElementById('loginBtn').onclick = () => {
+      registerSIP();
+      saveConfig();
+    };
+
+    function saveConfig() {
+      const config = {
+        username: document.getElementById('sip-username').value,
+        password: document.getElementById('sip-password').value,
+        server: document.getElementById('sip-domain').value,
+        operator: document.getElementById('targetNumber').value
+      };
+
+      fetch('/save_sip_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+    }
+
+    function registerSIP() {
+      const username = document.getElementById('sip-username').value;
+      const password = document.getElementById('sip-password').value;
+      const domain = document.getElementById('sip-domain').value;
+      const uri = `sip:${username}@${domain}`;
+      const wsServer = `ws://${domain}:5066`;
+
+      if (userAgent) {
+        userAgent.stop();
+        userAgent = null;
+      }
+
+      userAgent = new SIP.UserAgent({
+        uri: SIP.UserAgent.makeURI(uri),
+        transportOptions: { server: wsServer },
+        authorizationUsername: username,
+        authorizationPassword: password,
+        delegate: {
+          onInvite: handleIncomingInvite
+        }
+      });
+
+      userAgent.start().then(() => {
+        document.getElementById('status').innerText = `Подключен как ${uri}`;
+        document.getElementById('login-block').style.display = 'none';
+        document.getElementById('call-block').style.display = 'block';
+      }).catch(err => {
+        alert("Ошибка регистрации: " + err);
+      });
+    }
+
+    function handleIncomingInvite(incomingSession) {
+      session = incomingSession;
+
+      document.getElementById('incoming-call').style.display = 'block';
+
+      document.getElementById('acceptBtn').onclick = async () => {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          document.getElementById('localVideo').srcObject = localStream;
+
+          await session.accept({
+            sessionDescriptionHandlerOptions: {
+              constraints: { audio: true, video: true },
+              stream: localStream
+            }
+          });
+
+          attachSessionMedia(session);
+        } catch (err) {
+          alert('Ошибка доступа к медиа: ' + err.message);
+          session.reject();
+        }
+        document.getElementById('incoming-call').style.display = 'none';
+      };
+
+      document.getElementById('rejectBtn').onclick = () => {
+        session.reject();
+        session = null;
+        document.getElementById('incoming-call').style.display = 'none';
+      };
+    }
+
+    function attachSessionMedia(session) {
+      // Для входящих и исходящих
+      session.stateChange.addListener((state) => {
+        if (state === SIP.SessionState.Established) {
+          const pc = session.sessionDescriptionHandler.peerConnection;
+          const remoteStream = new MediaStream();
+          pc.getReceivers().forEach((receiver) => {
+            if (receiver.track) remoteStream.addTrack(receiver.track);
+          });
+          document.getElementById('remoteAudio').srcObject = remoteStream;
+          document.getElementById('remoteVideo').srcObject = remoteStream;
+        }
+        if (state === SIP.SessionState.Terminated) {
+          document.getElementById('remoteAudio').srcObject = null;
+          document.getElementById('remoteVideo').srcObject = null;
+          document.getElementById('localVideo').srcObject = null;
+          session = null;
+        }
+      });
+    }
+
+    function makeCall() {
+      const target = document.getElementById('targetNumber').value;
+      const targetURI = SIP.UserAgent.makeURI(`sip:${target}@${document.getElementById('sip-domain').value}`);
+
+      navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        .then((stream) => {
+          localStream = stream;
+          document.getElementById('localVideo').srcObject = stream;
+
+          const inviter = new SIP.Inviter(userAgent, targetURI, {
+            sessionDescriptionHandlerOptions: {
+              constraints: { audio: true, video: true },
+              stream: stream
+            }
+          });
+
+          session = inviter;
+          attachSessionMedia(session);
+          inviter.invite();
+        })
+        .catch((err) => {
+          alert("Ошибка доступа к медиа: " + err.message);
+        });
+    }
+
+    function hangupCall() {
+      if (session) {
+        if (session.state === SIP.SessionState.Established) {
+          session.bye();
+        } else if (session.state === SIP.SessionState.Initial) {
+          session.cancel();
+        }
+        session = null;
+        document.getElementById('remoteAudio').srcObject = null;
+        document.getElementById('remoteVideo').srcObject = null;
+        document.getElementById('localVideo').srcObject = null;
+      }
+    }
+  </script>
+</body>
+</html>

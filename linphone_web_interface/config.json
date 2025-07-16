@@ -1,0 +1,11 @@
+{
+    "server": "172.16.102.2",
+    "username": "1199",
+    "password": "mfqMKPG7",
+    "operator": "1018",
+    "master_volume": null,
+    "pcm_volume": null,
+    "output_device": "Device [USB Audio Device], device 0",
+    "input_device": "Device [USB Audio Device], device 0",
+    "video_device": null
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=GPIO SIP Call Trigger
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /home/orangepi/gpio.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

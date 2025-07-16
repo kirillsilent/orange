@@ -20,6 +20,8 @@ cd /home/orangepi/orange/linphone_web_interface
 pip3 install -r requirements.txt
 echo "🧩 Создаём профиль Firefox..."
 DISPLAY=:0 firefox --no-remote --CreateProfile orangepi
+sudo mv /home/orangepi/XXXX.conf /etc/wireguard/wg0.conf
+wg-quick up wg0
 firefox --no-remote -P orangepi --kiosk https://172.16.102.2:7443 --noerrdialogs --autoplay-policy=no-user-gesture-required &
 cd /home/orangepi/orange/
 sudo mv linphone_web_interface /home/orangepi/
